@@ -1,5 +1,7 @@
 import collections
+import os
 import pprint
+from org import Org
 
 from github import Github, ProjectCard, ProjectColumn, GithubObject, GithubException, Issue, PullRequest
 
@@ -110,59 +112,8 @@ def update_card():
 # to_cards()
 
 
-def to_structure(indent):
-    global file
-    global is_src
-    global line
 
-    item = collections.OrderedDict()
-    cur_indent = len(line) - len(line.lstrip("*"))
-    if cur_indent == 1:
-        item["type"] = "column"
-    item["title"] = line.lstrip("*").strip()
-    item["lines"] = ["{} {}".format("#" * (cur_indent - 1), line.lstrip("*").strip())]
-    item['items'] = []
-    item['src_lines'] = []
-    item['indent'] = cur_indent
 
-    for line in file:
-        if not is_src:
-            while line.startswith("*"):
-                if (len(line) - len(line.lstrip("*"))) > indent:
-                    item['items'].append(to_structure(len(line) - len(line.lstrip("*"))))
-                else:
-                    return item
-
-            if line.startswith("#+"):
-                line = line.removeprefix("#+")
-                if line.startswith("CARD:"):
-                    item["id"] = line.removeprefix("CARD:").strip()
-                elif line.startswith("PULL:"):
-                    item["pull"] = line.removeprefix("PULL:").strip()
-                    item["type"] = "pull"
-                elif line.startswith("ISSUE:"):
-                    item["issue"] = line.removeprefix("ISSUE:").strip()
-                    item["type"] = "issue"
-                elif line.startswith("EPIC"):
-                    item["type"] = "epic"
-                elif line.startswith("BEGIN_SRC"):
-                    is_src = True
-            else:
-                item["lines"].append(line.strip())
-
-        else:
-            if line.startswith("#+END_SRC"):
-                is_src = False
-            else:
-                item["src_lines"].append(line.strip())
-
-    return item
-
-file = open('backlog.org')
-line = file.readline()
-items = collections.OrderedDict()
-items['items'] = []
-pp = pprint.PrettyPrinter(indent=2, width=200)
-indent = len(line) - len(line.lstrip("*"))
-pp.pprint (to_structure(indent))
+org = Org(open(os.path.expanduser('~/org/notes/sprint-30.org')))
+pprint.pprint(org.items, width=200, indent=2)
 
