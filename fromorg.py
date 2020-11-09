@@ -1,3 +1,6 @@
+import collections
+import pprint
+
 from github import Github, ProjectCard, ProjectColumn, GithubObject, GithubException, Issue, PullRequest
 
 gh = Github(open(".fromorg.token").readline().strip())
@@ -7,6 +10,8 @@ card = None
 previous_card = None
 project = None
 max_indent = 2
+file = None
+line = ""
 
 def find_project(project_name):
     global project
@@ -42,54 +47,7 @@ def find_card():
 
 
 def handle_line(line):
-    global column
-    global is_src
-    global card
-    global previous_card
-
-    if not is_src:
-        if line.startswith("* "):
-            column_name = line.lstrip("* ").strip()
-            column = find_column(column_name)
-            previous_card = None
-            return
-
-        if card is None:
-            card = {"lines": [], "src_lines" : [], "pull": "", "issue": "", "id": ""}
-
-        if line.startswith("*"):
-            indent = len(line) - len(line.lstrip("*"))
-            if indent > max_indent:
-                # remove #
-                indent = 1
-            update_card()
-            card = {"lines": [], "src_lines" : [], "pull": "", "issue": "", "id": ""}
-            card["lines"] = ["{} {}".format("#"*(indent-1), line.lstrip("*").strip())]
-            return
-
-        if line.startswith("#+"):
-            line = line.removeprefix("#+")
-            if line.startswith("CARD:"):
-                card["id"] = line.removeprefix("CARD:").strip()
-                return
-            if line.startswith("PULL:"):
-                card["pull"] = line.removeprefix("PULL:").strip()
-                return
-            if line.startswith("ISSUE:"):
-                card["issue"] = line.removeprefix("ISSUE:").strip()
-                return
-            if line.startswith("BEGIN_SRC"):
-                is_src = True
-                return
-        card["lines"].append(line.strip())
-
-    else:
-        if line.startswith("#+"):
-            line = line.removeprefix("#+")
-            if line.startswith("END_SRC"):
-                is_src = False
-        else:
-            card["src_lines"].append(line.strip())
+    pass
 
 def get_lines():
     if card['src_lines'] != []:
@@ -148,15 +106,63 @@ def update_card():
 
 
 
-def to_cards():
-    filepath = 'backlog.org'
-    with open(filepath) as fp:
-        for line in fp:
-            print(line)
-            handle_line(line)
+# find_project("test")
+# to_cards()
+
+
+def to_structure(indent):
+    global file
+    global is_src
+    global line
+
+    item = collections.OrderedDict()
+    cur_indent = len(line) - len(line.lstrip("*"))
+    if cur_indent == 1:
+        item["type"] = "column"
+    item["title"] = line.lstrip("*").strip()
+    item["lines"] = ["{} {}".format("#" * (cur_indent - 1), line.lstrip("*").strip())]
+    item['items'] = []
+    item['src_lines'] = []
+    item['indent'] = cur_indent
+
+    for line in file:
+        if not is_src:
+            while line.startswith("*"):
+                if (len(line) - len(line.lstrip("*"))) > indent:
+                    item['items'].append(to_structure(len(line) - len(line.lstrip("*"))))
+                else:
+                    return item
+
+            if line.startswith("#+"):
+                line = line.removeprefix("#+")
+                if line.startswith("CARD:"):
+                    item["id"] = line.removeprefix("CARD:").strip()
+                elif line.startswith("PULL:"):
+                    item["pull"] = line.removeprefix("PULL:").strip()
+                    item["type"] = "pull"
+                elif line.startswith("ISSUE:"):
+                    item["issue"] = line.removeprefix("ISSUE:").strip()
+                    item["type"] = "issue"
+                elif line.startswith("EPIC"):
+                    item["type"] = "epic"
+                elif line.startswith("BEGIN_SRC"):
+                    is_src = True
+            else:
+                item["lines"].append(line.strip())
+
         else:
-            update_card()
+            if line.startswith("#+END_SRC"):
+                is_src = False
+            else:
+                item["src_lines"].append(line.strip())
 
+    return item
 
-find_project("test")
-to_cards()
+file = open('backlog.org')
+line = file.readline()
+items = collections.OrderedDict()
+items['items'] = []
+pp = pprint.PrettyPrinter(indent=2, width=200)
+indent = len(line) - len(line.lstrip("*"))
+pp.pprint (to_structure(indent))
+
