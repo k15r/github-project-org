@@ -115,5 +115,5 @@ def update_card():
 
 
 org = Org(open(os.path.expanduser('~/org/notes/sprint-30.org')))
-pprint.pprint(org.items, width=200, indent=2)
+pprint.pprint(org.Items(), width=200, indent=2)
 

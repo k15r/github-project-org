@@ -1,55 +1,31 @@
-from github import Github, Issue, PullRequest
-import textwrap
 import re
+from org import Org
+import argparse
 
-gh = Github(open(".toorg.token").readline().strip())
+def main():
+    parser = argparse.ArgumentParser()
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument('-t', '--token', required=True)
+    parent_parser.add_argument('-p', '--project', required=True)
+    parent_parser.add_argument('-o', '--org', required=True)
+    parent_parser.add_argument('-c', '--column', nargs='+')
+    parent_parser.add_argument('-f', '--file', required=True, type=argparse.FileType('r'))
+    subparsers = parser.add_subparsers(dest="subparser")
+    update_org_parser = subparsers.add_parser('toorg', parents=[parent_parser])
+    update_org_parser.set_defaults(func=toorg)
+    update_gh_parser = subparsers.add_parser('togithub', parents=[parent_parser])
+    update_gh_parser.set_defaults(func=togithub)
+    args = parser.parse_args()
+    args.func(args)
 
-def find_column():
-    for project in gh.get_organization("kyma-project").get_projects():
-        # for project in gh.get_user("k15r").get_projects():
-        if project.name == "Tunas":
-            for column in project.get_columns():
-                for name in ["Backlog", "To do", "In Progress"]:
-                    if column.name == name:
-                        print("* {}".format(name))
-                        to_org(column)
+def toorg(args):
+    org = Org(args.file, args.org, args.project)
+    org.UpdateFromGH(columns=args.column, token=args.token)
+    print(org)
 
+def togithub(args):
+    pass
 
-def to_org(column):
-    indent = 2
-    for card in column.get_cards():
-        if card.note is not None:
-            if card.note.startswith("# "):
-                indent = 2
-                to_note(card, indent)
-                indent = 3
-            else:
-                to_note(card, indent)
-        else:
-            content = card.get_content()
-            if type(content) is Issue.Issue:
-                to_issue(card, content, indent, "ISSUE")
-            if type(content) is PullRequest.PullRequest:
-                to_issue(card, content, indent, "PULL")
+if __name__ == "__main__":
+    main()
 
-
-def to_issue(card, content, indent, issue):
-    print("{} {}".format('*' * indent, content.title))
-    print("#+CARD: {}".format(card.id))
-    print("#+{}: {}".format(issue, content.number))
-    print("#+URL: {}".format(content.html_url))
-    print("#+BEGIN_SRC gfm")
-    print(re.sub('^(,?[\*#])',r',\1',content.body, 0, re.MULTILINE))
-    print("#+END_SRC")
-
-
-def to_note(card, indent):
-    heading = card.note.split('\n')[0]
-    print("{} {}".format('*' * indent, heading.lstrip("# ")))
-    print("#+BEGIN_SRC gfm")
-    print("{}".format(card.note))
-    print("#+END_SRC")
-    print("#+CARD: {}".format(card.id))
-
-
-find_column()
