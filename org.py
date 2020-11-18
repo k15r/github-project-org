@@ -2,6 +2,7 @@ import collections
 import copy
 import random
 import string
+import tempfile
 
 from github import Github, Issue, PullRequest
 from itertools import chain
@@ -11,13 +12,13 @@ from re import sub
 def escape(src_lines):
     lines = []
     if isinstance(src_lines, str):
-        sublines = src_lines.splitlines()
-    else:
         sublines = src_lines
+    else:
+        sublines = "\n".join(src_lines)
 
-    for subline in sublines:
-        for ssline in subline.splitlines():
-            lines.append(sub('^(,?[\*#])', r',\1', ssline))
+    sslines = sublines.splitlines()
+    for ssline in sslines:
+        lines.append(sub('^(,?[\*#])', r',\1', ssline))
     return "\n".join(lines)
 
 
@@ -31,7 +32,7 @@ class Item:
         self.url = ""
         self.gh_issue = ""
         self.lines = []
-        self.src_lines = ""
+        self.src_lines = None
         self.indent = -1
         self.gh_card = None
 
@@ -43,16 +44,20 @@ class Item:
             str = ['{} {}'.format(indent * "*", self.src_lines.strip().splitlines()[0].lstrip("*#"))]
         elif self.lines:
             str = ['{} {}'.format(indent * "*", self.lines[0].strip().lstrip("*#"))]
-        if self.src_lines:
-            str.append("\n".join(["#+BEGIN_SRC gfm", escape(self.src_lines), "#+END_SRC"]))
         if self.id != 0:
             str.append("#+CARD: {}".format(self.id))
-        if self.url:
-            str.append("#+URL: {}".format(self.url))
         if self.type == 'issue':
             str.append("#+ISSUE: {}".format(self.gh_issue))
         if self.type == 'pull':
             str.append("#+PULL: {}".format(self.gh_issue))
+        if self.type == 'story':
+            str.append("#+STORY")
+        if self.url:
+            str.append("#+URL: {}".format(self.url))
+        if self.type == 'epic':
+            str.append("#+EPIC")
+        if self.src_lines:
+            str.append("\n".join(["#+BEGIN_SRC gfm", escape(self.src_lines), "#+END_SRC"]))
         if self.lines:
             str.append("\n".join(self.lines))
         if self.children:
@@ -123,9 +128,12 @@ def getTitle(gh_card, content):
 
 
 class Org:
-    def __init__(self, file, organisation="", project=""):
+    def __init__(self, filename, organisation="", project=""):
         self.__line = ""
-        self.__file = file
+        if filename != "":
+            self.__file = open(filename)
+        else:
+            self.__file = tempfile.TemporaryFile()
         self.organisation = organisation
         self.project = project
         self.old = None
@@ -178,6 +186,7 @@ class Org:
         self.__line = (self.__line[0], True)
 
         for line in self.__file:
+            line = line.removesuffix("\n")
             self.__line = (line, False)
             line = self.__line[0]
             if not is_src:
@@ -194,16 +203,20 @@ class Org:
                     line = line.removeprefix("#+")
                     if line.startswith("CARD:"):
                         item.id = line.removeprefix("CARD:").strip()
+                    elif line.startswith("URL:"):
+                        item.url = line.removeprefix("URL:").strip()
                     elif line.startswith("PULL:"):
-                        item.pull = line.removeprefix("PULL:").strip()
+                        item.gh_issue = line.removeprefix("PULL:").strip()
                         item.type = "pull"
                         item.indent = -1
                     elif line.startswith("ISSUE:"):
-                        item.issue = line.removeprefix("ISSUE:").strip()
+                        item.gh_issue = line.removeprefix("ISSUE:").strip()
                         item.type = "issue"
                         item.indent = -1
                     elif line.startswith("EPIC"):
                         item.type = "epic"
+                    elif line.startswith("STORY"):
+                        item.type = "story"
                     elif line.startswith("BEGIN_SRC"):
                         is_src = True
                 else:
@@ -213,7 +226,11 @@ class Org:
                 if line.startswith("#+END_SRC"):
                     is_src = False
                 else:
-                    item.src_lines = "\n".join([item.src_lines, line.strip()])
+                    line = sub('^,(,?[\*#].*)', r'\1', line)
+                    if not item.src_lines:
+                        item.src_lines = line
+                    else:
+                        item.src_lines = item.src_lines + "\n" + line
 
         return item
 
@@ -234,7 +251,6 @@ class Org:
             if int(item.id) == gh_card.id:
                 found = self.__updateItem(content, gh_card, item, last_found)
                 return found
-
 
         for item in self.item:
             title = str(item)
